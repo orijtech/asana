@@ -71,16 +71,11 @@ func (c *Client) httpClient() *http.Client {
 func (c *Client) ListTasks() {
 }
 
-func (c *Client) DeleteTask() {
-}
-
 func (c *Client) UpdateTask() {
 }
 
 func (c *Client) Watch() {
 }
-
-const ()
 
 type Team struct {
 }

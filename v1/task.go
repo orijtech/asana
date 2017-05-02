@@ -15,11 +15,11 @@ import (
 )
 
 type Task struct {
-	ID          int64       `json:"id,omitempty"`
+	ID          int64              `json:"id,omitempty"`
 	Assignee    *NamedAndIDdEntity `json:"assignee,omitempty"`
-	CreatedAt   *time.Time  `json:"created_at,omitempty"`
-	Completed   bool        `json:"completed,omitempty"`
-	CompletedAt *time.Time  `json:"completed_at,omitempty"`
+	CreatedAt   *time.Time         `json:"created_at,omitempty"`
+	Completed   bool               `json:"completed,omitempty"`
+	CompletedAt *time.Time         `json:"completed_at,omitempty"`
 
 	AssigneeStatus AssigneeStatus `json:"assignee_status,omitempty"`
 
@@ -32,10 +32,10 @@ type Task struct {
 
 	Followers []*NamedAndIDdEntity `json:"followers,omitempty"`
 
-	HeartedByMe bool       `json:"hearted,omitempty"`
-	Hearts      []*User    `json:"hearts,omitempty"`
-	HeartCount  int64      `json:"num_hearts,omitempty"`
-	ModifiedAt  *time.Time `json:"modified_at"`
+	HeartedByMe bool                 `json:"hearted,omitempty"`
+	Hearts      []*NamedAndIDdEntity `json:"hearts,omitempty"`
+	HeartCount  int64                `json:"num_hearts,omitempty"`
+	ModifiedAt  *time.Time           `json:"modified_at"`
 
 	Name string `json:"name,omitempty"`
 
@@ -204,9 +204,12 @@ func (c *Client) CreateTask(t *TaskRequest) (*Task, error) {
 	if err != nil {
 		return nil, err
 	}
+	return parseOutTaskFromData(slurp)
+}
 
+func parseOutTaskFromData(blob []byte) (*Task, error) {
 	wrap := new(taskResultWrap)
-	if err := json.Unmarshal(slurp, wrap); err != nil {
+	if err := json.Unmarshal(blob, wrap); err != nil {
 		return nil, err
 	}
 	return wrap.Task, nil
@@ -215,19 +218,21 @@ func (c *Client) CreateTask(t *TaskRequest) (*Task, error) {
 type TaskResultPage struct {
 	Tasks []*Task `json:"tasks"`
 	Err   error
+
+	NextPage *pageToken `json:"next_page,omitempty"`
 }
 
 type TaskRequest struct {
-	Page        int         `json:"page,omitempty"`
-	Limit       int         `json:"limit,omitempty"`
-	MaxRetries  int         `json:"max_retries,omitempty"`
-	Assignee    string      `json:"assignee"`
-	Project     string      `json:"project,omitempty"`
-	Workspace   string      `json:"workspace,omitempty"`
-	ID          int64       `json:"id,omitempty"`
-	CreatedAt   *time.Time  `json:"created_at,omitempty"`
-	Completed   bool        `json:"completed,omitempty"`
-	CompletedAt *time.Time  `json:"completed_at,omitempty"`
+	Page        int        `json:"page,omitempty"`
+	Limit       int        `json:"limit,omitempty"`
+	MaxRetries  int        `json:"max_retries,omitempty"`
+	Assignee    string     `json:"assignee"`
+	ProjectID   string     `json:"project,omitempty"`
+	Workspace   string     `json:"workspace,omitempty"`
+	ID          int64      `json:"id,omitempty"`
+	CreatedAt   *time.Time `json:"created_at,omitempty"`
+	Completed   bool       `json:"completed,omitempty"`
+	CompletedAt *time.Time `json:"completed_at,omitempty"`
 
 	AssigneeStatus AssigneeStatus `json:"assignee_status,omitempty"`
 
@@ -249,8 +254,8 @@ type TaskRequest struct {
 
 	Notes string `json:"notes,omitempty"`
 
-	Projects   []*Project `json:"projects,omitempty"`
-	ParentTask *Task      `json:"parent,omitempty"`
+	Projects   []*NamedAndIDdEntity `json:"projects,omitempty"`
+	ParentTask *Task                `json:"parent,omitempty"`
 
 	Memberships []*Membership `json:"memberships,omitempty"`
 
@@ -277,32 +282,11 @@ func (c *Client) ListMyTasks(treq *TaskRequest) (chan *TaskResultPage, error) {
 	if err != nil {
 		return nil, err
 	}
-	fullURL := fmt.Sprintf("%s/tasks?%s", baseURL, qs.Encode())
-	req, _ := http.NewRequest("GET", fullURL, nil)
-	slurp, _, err := c.doAuthReqThenSlurpBody(req)
-	if err != nil {
-		return nil, err
-	}
 
-	tresChan := make(chan *TaskResultPage)
-	go func() {
-		defer close(tresChan)
-
-		ltw := new(listTaskWrap)
-		page := new(TaskResultPage)
-		if err := json.Unmarshal(slurp, ltw); err != nil {
-			page.Err = err
-		} else {
-			page.Tasks = ltw.Tasks
-		}
-
-		tresChan <- page
-	}()
-
-	return tresChan, nil
+	path := fmt.Sprintf("%s/tasks?%s", baseURL, qs.Encode())
+	pageChan, _, err := c.doTasksPaging(path)
+	return pageChan, err
 }
-
-type Project NamedAndIDdEntity
 
 type WorkspacePage struct {
 	Err        error
@@ -351,4 +335,73 @@ func (c *Client) ListMyWorkspaces() (chan *WorkspacePage, error) {
 	}()
 
 	return wspChan, nil
+}
+
+var errEmptyTaskID = errors.New("expecting a non-empty taskID")
+
+func (c *Client) FindTaskByID(taskID string) (*Task, error) {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return nil, errEmptyTaskID
+	}
+	fullURL := fmt.Sprintf("%s/tasks/%s", baseURL, taskID)
+	req, _ := http.NewRequest("GET", fullURL, nil)
+	slurp, _, err := c.doAuthReqThenSlurpBody(req)
+	if err != nil {
+		return nil, err
+	}
+	return parseOutTaskFromData(slurp)
+}
+
+var errEmptyProjectID = errors.New("expecting a non-empty projectID")
+
+func (c *Client) ListTasksForProject(treq *TaskRequest) (resultsChan chan *TaskResultPage, cancelChan chan<- bool, err error) {
+	path := fmt.Sprintf("/projects/%s/tasks", treq.ProjectID)
+	return c.doTasksPaging(path)
+}
+
+func (c *Client) doTasksPaging(path string) (resultsChan chan *TaskResultPage, cancelChan chan<- bool, err error) {
+	tasksPageChan := make(chan *TaskResultPage)
+	cancelChan = make(chan bool, 1)
+
+	go func() {
+		defer close(tasksPageChan)
+
+		for {
+			fullURL := fmt.Sprintf("%s%s", baseURL, path)
+			req, _ := http.NewRequest("GET", fullURL, nil)
+			slurp, _, err := c.doAuthReqThenSlurpBody(req)
+			if err != nil {
+				tasksPageChan <- &TaskResultPage{Err: err}
+				return
+			}
+
+			page := new(TaskResultPage)
+			if err := json.Unmarshal(slurp, page); err != nil {
+				page.Err = err
+			}
+
+			tasksPageChan <- page
+
+			if np := page.NextPage; np != nil && np.Path == "" {
+				path = np.Path
+			} else {
+				// End of this pagination
+				break
+			}
+		}
+	}()
+
+	return tasksPageChan, cancelChan, nil
+}
+
+func (c *Client) DeleteTask(taskID string) error {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return errEmptyTaskID
+	}
+	fullURL := fmt.Sprintf("%s/tasks/%s", baseURL, taskID)
+	req, _ := http.NewRequest("DELETE", fullURL, nil)
+	_, _, err := c.doAuthReqThenSlurpBody(req)
+	return err
 }
