@@ -1,22 +1,12 @@
-# asana
-Asana API client implemented in Go
+package asana_test
 
-## Requirements:
-* Personal Authentication Token set in your environment as
-`ASANA_PERSONAL_ACCESS_TOKEN`
-or you could pass in a key when initializing a client.
-
-* Currently their API only has v1 so that's the client we'll use.
-
-## Example creating a task
-```go
 import (
 	"log"
 
 	"github.com/odeke-em/asana/v1"
 )
 
-func main() {
+func Example_client_CreateTask() {
 	client, err := asana.NewClient()
 	if err != nil {
 		log.Fatal(err)
@@ -38,11 +28,35 @@ func main() {
 
 	log.Printf("Here is the task: %#v", setupServers)
 }
-```
 
-## List all your workspaces
-```go
-func main() {
+func Example_client_ListTasks() {
+}
+
+func Example_client_ListTasksForUser() {
+}
+
+func Example_client_ListMyTasks() {
+	client, err := asana.NewClient()
+	if err != nil {
+		log.Fatal(err)
+	}
+	taskPagesChan, err := client.ListMyTasks(&asana.TaskRequest{
+		Workspace: "331783765164429",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	pageCount := 0
+	for page := range taskPagesChan {
+		for i, task := range page.Tasks {
+			log.Printf("Page: #%d i: %d task: %#v", pageCount, i, task)
+		}
+		pageCount += 1
+	}
+}
+
+func Example_client_ListMyWorkspaces() {
 	client, err := asana.NewClient()
 	if err != nil {
 		log.Fatal(err)
@@ -61,4 +75,3 @@ func main() {
 		pageCount += 1
 	}
 }
-```
