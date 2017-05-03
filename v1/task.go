@@ -295,7 +295,7 @@ func (c *Client) ListMyTasks(treq *TaskRequest) (chan *TaskResultPage, error) {
 	if treq != nil {
 		*theReq = *treq
 	}
-	theReq.Assignee = meAsUser
+	theReq.Assignee = MeAsUser
 	qs, err := otils.ToURLValues(theReq)
 	if err != nil {
 		return nil, err
@@ -308,7 +308,7 @@ func (c *Client) ListMyTasks(treq *TaskRequest) (chan *TaskResultPage, error) {
 
 type WorkspacePage struct {
 	Err        error
-	Workspaces []WS `json:"data,omitempty"`
+	Workspaces []*Workspace `json:"data,omitempty"`
 
 	NextPage *pageToken `json:"next_page,omitempty"`
 }
@@ -319,7 +319,7 @@ type pageToken struct {
 	URI    string `json:"uri"`
 }
 
-type WS NamedAndIDdEntity
+type Workspace NamedAndIDdEntity
 
 func (c *Client) ListMyWorkspaces() (chan *WorkspacePage, error) {
 	wspChan := make(chan *WorkspacePage)

@@ -82,27 +82,6 @@ func (c *Client) httpClient() *http.Client {
 	return &http.Client{Transport: rt}
 }
 
-func (c *Client) ListTasks() {
-}
-
-func (c *Client) UpdateTask() {
-}
-
-func (c *Client) Watch() {
-}
-
-type Team struct {
-}
-
-func (c *Client) CreateTeam() {
-}
-
-func (c *Client) FindTeamById() {
-}
-
-func (c *Client) FindMatchingTeams() {
-}
-
 type User struct {
 	UID UserID `json:"user"`
 }
@@ -111,7 +90,7 @@ type UserID string
 
 var _ json.Marshaler = (*UserID)(nil)
 
-const meAsUser = "me"
+const MeAsUser = "me"
 
 func (uid UserID) MarshalJSON() ([]byte, error) {
 	return json.Marshal(uid.String())
@@ -120,90 +99,12 @@ func (uid UserID) MarshalJSON() ([]byte, error) {
 func (uid UserID) String() string {
 	str := string(uid)
 	if strings.TrimSpace(str) == "" {
-		return meAsUser
+		return MeAsUser
 	}
 	return str
 }
 
-type TeamRequest struct {
-	// TeamID is a globally unique identifier for the team.
-	TeamID string `json:"team_id"`
-
-	UserID string `json:"user_id"`
-
-	OrganizationID string `json:"organization"`
-}
-
-var (
-	errNilTeamRequest = errors.New("nil team request")
-
-	errEmptyUserID = errors.New("empty userID passed in")
-	errEmptyTeamID = errors.New("empty teamID passed in")
-)
-
-func (treq *TeamRequest) Validate() error {
-	if treq == nil {
-		return errNilTeamRequest
-	}
-	teamID := strings.TrimSpace(treq.TeamID)
-	if teamID == "" {
-		return errEmptyTeamID
-	}
-	if treq.UserID == "" {
-		return errEmptyUserID
-	}
-	return nil
-}
-
-type teamCRUDData struct {
-	UserID UserID `json:"user"`
-}
-
 var errUnimplemented = errors.New("unimplemented")
-
-// POST: "/teams/{TEAMID}/addUser"
-func (c *Client) AddUserToTeam(treq *TeamRequest) (interface{}, error) {
-	if err := treq.Validate(); err != nil {
-		return nil, err
-	}
-
-	fullURL := fmt.Sprintf("%s/teams/%s/addUser", baseURL, treq.TeamID)
-	if fullURL == "" {
-	}
-	return nil, errUnimplemented
-}
-
-func (c *Client) RemoveUserFromTeam(treq *TeamRequest) (interface{}, error) {
-	if err := treq.Validate(); err != nil {
-		return nil, err
-	}
-
-	fullURL := fmt.Sprintf("%s/teams/%s/deleteUser", baseURL, treq.TeamID)
-	if fullURL == "" {
-	}
-	return nil, errUnimplemented
-}
-
-func (c *Client) UsersInTeam(treq *TeamRequest) (interface{}, error) {
-	if treq == nil || strings.TrimSpace(treq.TeamID) == "" {
-		return nil, errEmptyTeamID
-	}
-	fullURL := fmt.Sprintf("%s/teams/%s/users", baseURL, treq.TeamID)
-	if fullURL == "" {
-	}
-	return nil, errUnimplemented
-}
-
-func (c *Client) TeamsForUser(treq *TeamRequest) (interface{}, error) {
-	if treq == nil || strings.TrimSpace(treq.UserID) == "" {
-		return nil, errEmptyUserID
-	}
-	fullURL := fmt.Sprintf("%s/users/%s/team", baseURL, treq.UserID)
-	req, _ := http.NewRequest("GET", fullURL, nil)
-	if req == nil {
-	}
-	return nil, errUnimplemented
-}
 
 func (c *Client) personalAccessTokenAuthValue() string {
 	c.RLock()

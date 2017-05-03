@@ -18,7 +18,7 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/odeke-em/asana/v1"
+	"github.com/orijtech/asana/v1"
 )
 
 func Example_client_CreateTask() {
@@ -29,8 +29,8 @@ func Example_client_CreateTask() {
 
 	setupServers, err := client.CreateTask(&asana.TaskRequest{
 		Assignee:  "emm.odeke@gmail.com",
-		Notes:     "Please ensure to setup the servers, then ping our group",
-		Name:      "server setup",
+		Notes:     "Announce Asana Go API client release",
+		Name:      "api-client-release",
 		Workspace: "331783765164429",
 		Followers: []asana.UserID{
 			"emmanuel@orijtech.com",
@@ -292,6 +292,133 @@ func Example_client_TasksForProject() {
 
 		for i, task := range page.Tasks {
 			log.Printf("Page: #%d i: %d task: %#v", pageCount, i, task)
+		}
+		pageCount += 1
+	}
+}
+
+func Example_client_FindTeamByID() {
+	client, err := asana.NewClient()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	engTeam, err := client.FindTeamByID("")
+	if err != nil {
+		log.Fatal(err)
+	}
+	log.Printf("This is the information for the 331783765164429 team: %#v", engTeam)
+}
+
+func Example_client_ListAllTeamsInOrganization() {
+	client, err := asana.NewClient()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	teamsPagesChan, _, err := client.ListAllTeamsInOrganization("332697157202049")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	pageCount := 0
+	for page := range teamsPagesChan {
+		if err := page.Err; err != nil {
+			log.Printf("Page: #%d err: %v", pageCount, err)
+			continue
+		}
+
+		for i, team := range page.Teams {
+			log.Printf("Page: #%d i: %d team: %#v", pageCount, i, team)
+		}
+		pageCount += 1
+	}
+}
+
+func Example_client_ListAllTeamsForUser() {
+	client, err := asana.NewClient()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	teamsPagesChan, _, err := client.ListAllTeamsForUser(&asana.TeamRequest{
+		UserID:         asana.MeAsUser,
+		OrganizationID: "332697157202049",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	pageCount := 0
+	for page := range teamsPagesChan {
+		if err := page.Err; err != nil {
+			log.Printf("Page: #%d err: %v", pageCount, err)
+			continue
+		}
+
+		for i, team := range page.Teams {
+			log.Printf("Page: #%d i: %d team: %#v", pageCount, i, team)
+		}
+		pageCount += 1
+	}
+}
+
+func Example_client_AddUserToTeam() {
+	client, err := asana.NewClient()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	confirmation, err := client.AddUserToTeam(&asana.TeamRequest{
+		UserID: "emm.odeke@gmail.com",
+		TeamID: "331783765164429",
+	})
+
+	if err != nil {
+		log.Fatalf("err adding myself to the team: %v", err)
+	}
+
+	log.Printf("confirmation: %#v\n", confirmation)
+}
+
+func Example_client_RemoveUserFromTeam() {
+	client, err := asana.NewClient()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	err = client.RemoveUserFromTeam(&asana.TeamRequest{
+		UserID: "emm.odeke@gmail.com",
+		TeamID: "331783765164429",
+	})
+
+	if err != nil {
+		log.Fatalf("failed to remove user from team, err: %v", err)
+	} else {
+		log.Printf("successfully removed the user from the team")
+	}
+}
+
+func Example_client_ListAllUsersInTeam() {
+	client, err := asana.NewClient()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	usersPagesChan, _, err := client.ListAllUsersInTeam("331783765164429")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	pageCount := 0
+	for page := range usersPagesChan {
+		if err := page.Err; err != nil {
+			log.Printf("Page: #%d err: %v", pageCount, err)
+			continue
+		}
+
+		for i, user := range page.Users {
+			log.Printf("Page: #%d i: %d team: %#v", pageCount, i, user)
 		}
 		pageCount += 1
 	}
