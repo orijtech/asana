@@ -218,6 +218,10 @@ func parseOutTaskFromData(blob []byte) (*Task, error) {
 type TaskResultPage struct {
 	Tasks []*Task `json:"tasks"`
 	Err   error
+}
+
+type taskPager struct {
+	TaskResultPage
 
 	NextPage *pageToken `json:"next_page,omitempty"`
 }
@@ -376,14 +380,15 @@ func (c *Client) doTasksPaging(path string) (resultsChan chan *TaskResultPage, c
 				return
 			}
 
-			page := new(TaskResultPage)
-			if err := json.Unmarshal(slurp, page); err != nil {
-				page.Err = err
+			pager := new(taskPager)
+			if err := json.Unmarshal(slurp, pager); err != nil {
+				pager.Err = err
 			}
 
-			tasksPageChan <- page
+			taskPage := pager.TaskResultPage
+			tasksPageChan <- &taskPage
 
-			if np := page.NextPage; np != nil && np.Path == "" {
+			if np := pager.NextPage; np != nil && np.Path == "" {
 				path = np.Path
 			} else {
 				// End of this pagination

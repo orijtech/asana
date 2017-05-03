@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -44,6 +43,8 @@ func (l *Layout) UnmarshalJSON(b []byte) error {
 }
 
 type ProjectRequest struct {
+	ProjectID string `json:"id"`
+
 	Name  string `json:"name,omitempty"`
 	Notes string `json:"notes,omitempty"`
 
@@ -58,6 +59,7 @@ type ProjectRequest struct {
 }
 
 type Project struct {
+	ID       int64  `json:"id,omitempty"`
 	Name     string `json:"name,omitempty"`
 	Notes    string `json:"notes,omitempty"`
 	Color    string `json:"color,omitempty"`
@@ -67,20 +69,20 @@ type Project struct {
 	CreatedAt  *time.Time         `json:"created_at,omitempty"`
 	ModifiedAt *time.Time         `json:"created_at,omitempty"`
 
-	WorkspaceID int64 `json:"workspace,string"`
+	Workspace *NamedAndIDdEntity `json:"workspace,omitempty"`
 
 	Members   []*NamedAndIDdEntity `json:"members,omitempty"`
 	Followers []*NamedAndIDdEntity `json:"followers,omitempty"`
 }
 
 var (
-	errNilProject     = errors.New("nil project")
-	errEmptyWorkspace = errors.New("expecting a non-empty workspace")
+	errNilProjectRequest = errors.New("expecting a non-nil projectRequest")
+	errEmptyWorkspace    = errors.New("expecting a non-empty workspace")
 )
 
 func (preq *ProjectRequest) Validate() error {
 	if preq == nil {
-		return errNilProject
+		return errNilProjectRequest
 	}
 	if preq.Workspace == "" {
 		return errEmptyWorkspace
@@ -93,12 +95,54 @@ type projectWrap struct {
 }
 
 func parseOutProjectFromData(blob []byte) (*Project, error) {
-	log.Printf("%s\n", blob)
 	pwj := new(projectWrap)
 	if err := json.Unmarshal(blob, pwj); err != nil {
 		return nil, err
 	}
 	return pwj.Project, nil
+}
+
+var errImmutableWorkspace = errors.New("workspace once set cannot be modified")
+
+// UpdateProject changes the attributes of a project.
+// Note that some fields like Workspace cannot be changed
+// once the project has been created. Trying to modify this
+// field will return an error.
+func (c *Client) UpdateProject(preq *ProjectRequest) (*Project, error) {
+	if preq == nil {
+		return nil, errNilProjectRequest
+	}
+	projectID := strings.TrimSpace(preq.ProjectID)
+	if projectID == "" {
+		return nil, errEmptyProjectID
+	}
+	if preq.Workspace != "" {
+		return nil, errImmutableWorkspace
+	}
+
+	copyReq := *preq
+	// Now unset ProjectID to avoid problems
+	// with trying to mutate it on the backend.
+	copyReq.ProjectID = ""
+
+	qs, err := otils.ToURLValues(&copyReq)
+	if err != nil {
+		return nil, err
+	}
+
+	queryStr := qs.Encode()
+	fullURL := fmt.Sprintf("%s/projects/%s", baseURL, projectID)
+	req, err := http.NewRequest("PUT", fullURL, strings.NewReader(queryStr))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	slurp, _, err := c.doAuthReqThenSlurpBody(req)
+	if err != nil {
+		return nil, err
+	}
+	return parseOutProjectFromData(slurp)
+
 }
 
 func (c *Client) CreateProject(preq *ProjectRequest) (*Project, error) {
@@ -123,4 +167,110 @@ func (c *Client) CreateProject(preq *ProjectRequest) (*Project, error) {
 		return nil, err
 	}
 	return parseOutProjectFromData(slurp)
+}
+
+func (c *Client) FindProjectByID(projectID string) (*Project, error) {
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" {
+		return nil, errEmptyProjectID
+	}
+	fullURL := fmt.Sprintf("%s/projects/%s", baseURL, projectID)
+	req, err := http.NewRequest("GET", fullURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	slurp, _, err := c.doAuthReqThenSlurpBody(req)
+	if err != nil {
+		return nil, err
+	}
+	return parseOutProjectFromData(slurp)
+}
+
+func (c *Client) DeleteProjectByID(projectID string) error {
+	projectID = strings.TrimSpace(projectID)
+	if projectID == "" {
+		return errEmptyProjectID
+	}
+	fullURL := fmt.Sprintf("%s/projects/%s", baseURL, projectID)
+	req, err := http.NewRequest("DELETE", fullURL, nil)
+	if err != nil {
+		return err
+	}
+	_, _, err = c.doAuthReqThenSlurpBody(req)
+	return err
+}
+
+type ProjectQuery struct {
+	WorkspaceID string `json:"workspace,omitempty"`
+	TeamID      string `json:"team,omitempty"`
+	Archived    bool   `json:"archived,omitempty"`
+}
+
+var errNilProjectQuery = errors.New("expecting a non-nil projectQuery")
+
+type ProjectsPage struct {
+	Projects []*Project `json:"data"`
+	Err      error
+}
+
+type projectsPager struct {
+	ProjectsPage
+
+	NextPage *pageToken `json:"next_page,omitempty"`
+}
+
+// FindProjects queries for projects with atleast one
+// of the fields of the ProjectQuery set as a filter.
+func (c *Client) QueryForProjects(pq *ProjectQuery) (pagesChan chan *ProjectsPage, cancelChan chan<- bool, err error) {
+	if pq == nil {
+		return nil, nil, errNilProjectQuery
+	}
+	qs, err := otils.ToURLValues(pq)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	cancelChan = make(chan bool, 1)
+	pagesChan = make(chan *ProjectsPage)
+
+	go func() {
+		defer close(pagesChan)
+
+		path := fmt.Sprintf("/projects?%s", qs.Encode())
+		for {
+			fullURL := fmt.Sprintf("%s%s", baseURL, path)
+			req, _ := http.NewRequest("GET", fullURL, nil)
+			slurp, _, err := c.doAuthReqThenSlurpBody(req)
+			if err != nil {
+				pagesChan <- &ProjectsPage{Err: err}
+				return
+			}
+
+			page := new(projectsPager)
+			if err := json.Unmarshal(slurp, page); err != nil {
+				page.Err = err
+			}
+
+			pp := page.ProjectsPage
+			pagesChan <- &pp
+
+			if np := page.NextPage; np != nil && np.Path == "" {
+				path = np.Path
+			} else {
+				// End of this pagination
+				break
+			}
+		}
+	}()
+
+	return pagesChan, cancelChan, nil
+}
+
+func (c *Client) TasksForProject(projectID string) (resultsChan chan *TaskResultPage, cancelChan chan<- bool, err error) {
+	if projectID == "" {
+		return nil, nil, errEmptyProjectID
+	}
+
+	startPath := fmt.Sprintf("/projects/%s/tasks", projectID)
+	return c.doTasksPaging(startPath)
 }
