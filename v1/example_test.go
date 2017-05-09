@@ -17,6 +17,7 @@ package asana_test
 import (
 	"fmt"
 	"log"
+	"os"
 
 	"github.com/orijtech/asana/v1"
 )
@@ -50,7 +51,7 @@ func Example_client_ListMyTasks() {
 		log.Fatal(err)
 	}
 	taskPagesChan, err := client.ListMyTasks(&asana.TaskRequest{
-		Workspace: "331783765164429",
+		Workspace: "331727068525363",
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -430,9 +431,32 @@ func Example_client_FindAttachmentByID() {
 		log.Fatal(err)
 	}
 
-	foundAttachment, err := client.FindAttachmentByID("5678")
+	foundAttachment, err := client.FindAttachmentByID("338179717217493")
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Printf("Found attachment: %#v\n", foundAttachment)
+}
+
+func Example_client_UploadAttachment() {
+	imageR, err := os.Open("./testdata/messengerQR.png")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer imageR.Close()
+
+	client, err := asana.NewClient()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	respAttachment, err := client.UploadAttachment(&asana.AttachmentUpload{
+		TaskID: "331727965981099",
+		Name:   "messenger QR code",
+		Body:   imageR,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Response attachment: %#v\n", respAttachment)
 }

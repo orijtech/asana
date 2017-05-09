@@ -19,6 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -230,7 +231,7 @@ func parseOutTaskFromData(blob []byte) (*Task, error) {
 }
 
 type TaskResultPage struct {
-	Tasks []*Task `json:"tasks"`
+	Tasks []*Task `json:"data"`
 	Err   error
 }
 
@@ -290,18 +291,30 @@ func (c *Client) ListAllMyTasks() (resultsChan chan *TaskResultPage, cancelChan 
 	return treq, cancelChan, err
 }
 
+const defaultTaskLimit = 20
+
+func (treq *TaskRequest) fillWithDefaults() {
+	if treq == nil {
+		return
+	}
+	if treq.Limit <= 0 {
+		treq.Limit = defaultTaskLimit
+	}
+}
+
 func (c *Client) ListMyTasks(treq *TaskRequest) (chan *TaskResultPage, error) {
 	theReq := new(TaskRequest)
 	if treq != nil {
 		*theReq = *treq
 	}
 	theReq.Assignee = MeAsUser
+	theReq.fillWithDefaults()
 	qs, err := otils.ToURLValues(theReq)
 	if err != nil {
 		return nil, err
 	}
 
-	path := fmt.Sprintf("%s/tasks?%s", baseURL, qs.Encode())
+	path := fmt.Sprintf("/tasks?%s", qs.Encode())
 	pageChan, _, err := c.doTasksPaging(path)
 	return pageChan, err
 }
@@ -363,7 +376,10 @@ func (c *Client) FindTaskByID(taskID string) (*Task, error) {
 		return nil, errEmptyTaskID
 	}
 	fullURL := fmt.Sprintf("%s/tasks/%s", baseURL, taskID)
-	req, _ := http.NewRequest("GET", fullURL, nil)
+	req, err := http.NewRequest("GET", fullURL, nil)
+	if err != nil {
+		return nil, err
+	}
 	slurp, _, err := c.doAuthReqThenSlurpBody(req)
 	if err != nil {
 		return nil, err
@@ -387,8 +403,15 @@ func (c *Client) doTasksPaging(path string) (resultsChan chan *TaskResultPage, c
 
 		for {
 			fullURL := fmt.Sprintf("%s%s", baseURL, path)
-			req, _ := http.NewRequest("GET", fullURL, nil)
+			log.Printf("fullURL: %q", fullURL)
+			req, err := http.NewRequest("GET", fullURL, nil)
+			if err != nil {
+				tasksPageChan <- &TaskResultPage{Err: err}
+				return
+			}
+
 			slurp, _, err := c.doAuthReqThenSlurpBody(req)
+log.Printf("slurp: %s\n", slurp)
 			if err != nil {
 				tasksPageChan <- &TaskResultPage{Err: err}
 				return

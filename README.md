@@ -8,14 +8,19 @@ or you could pass in a key when initializing a client.
 
 * Currently their API only has v1 so that's the client we'll use.
 
-## Example creating a task
+## Preamble:
 ```go
 import (
+	"fmt"
 	"log"
+	"os"
 
 	"github.com/odeke-em/asana/v1"
 )
+```
 
+## Example creating a task
+```go
 func main() {
 	client, err := asana.NewClient()
 	if err != nil {
@@ -76,5 +81,31 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Printf("Found attachment: %#v\n", foundAttachment)
+}
+```
+
+## Upload an attachment to a task
+```go
+func main() {
+	imageR, err := os.Open("./testdata/messengerQR.png")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer imageR.Close()
+
+	client, err := asana.NewClient()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	respAttachment, err := client.UploadAttachment(&asana.AttachmentUpload{
+		TaskID: "331727965981099",
+		Name:   "messenger QR code",
+		Body:   imageR,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Response attachment: %#v\n", respAttachment)
 }
 ```

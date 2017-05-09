@@ -1,3 +1,17 @@
+// Copyright 2017 orijtech. All Rights Reserved.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 package asana_test
 
 import (
@@ -63,12 +77,79 @@ func TestFindAttachmentByID(t *testing.T) {
 	}
 }
 
+func fFromFile(path string) io.Reader {
+	f, _ := os.Open(path)
+	return f
+}
+
+func TestUploadAttachment(t *testing.T) {
+	client, err := asana.NewClient(paToken1)
+	if err != nil {
+		t.Fatalf("initializing the client: %v", err)
+	}
+
+	tests := [...]struct {
+		req     *asana.AttachmentUpload
+		wantErr bool
+		want    *asana.Attachment
+	}{
+		0: {
+			req: &asana.AttachmentUpload{
+				TaskID: taskID1,
+				Name:   "Messenger QR code",
+				Body:   fFromFile("./testdata/messengerQR.png"),
+			},
+			wantErr: true,
+		},
+		1: {
+			req:     nil,
+			wantErr: true,
+		},
+		2: {
+			req:     &asana.AttachmentUpload{},
+			wantErr: true,
+		},
+		3: {
+			req: &asana.AttachmentUpload{
+				TaskID: "",
+				Body:   nil,
+			},
+			wantErr: true,
+		},
+	}
+
+	client.SetHTTPRoundTripper(&backend{route: findAttachmentByIDRoute})
+
+	for i, tt := range tests {
+		attachment, err := client.UploadAttachment(tt.req)
+		if tt.wantErr {
+			if err == nil {
+				t.Errorf("#%d: wanted non-nil error")
+			}
+			continue
+		}
+
+		if err != nil {
+			t.Errorf("#%d: got err: %v", i, err)
+			continue
+		}
+
+		gotBlob := jsonMarshal(attachment)
+		wantBlob := jsonMarshal(tt.want)
+		if !bytes.Equal(gotBlob, wantBlob) {
+			t.Errorf("#%d:\ngotBytes:  %s\nwantBytes: %s", i, gotBlob, wantBlob)
+		}
+	}
+}
+
 const (
 	paToken1 = "pa-token-1"
 
 	attachmentID1 = "5678"
+	taskID1       = "task-id-1"
 
 	findAttachmentByIDRoute = "find-attachment-by-id"
+	uploadAttachmentRoute   = "upload-attachment"
 )
 
 var authorizedTokens = map[string]bool{
@@ -123,6 +204,8 @@ func (b *backend) RoundTrip(req *http.Request) (*http.Response, error) {
 	switch b.route {
 	case findAttachmentByIDRoute:
 		return b.findAttachmentByIDRoundTrip(req)
+	case uploadAttachmentRoute:
+		return b.uploadAttachmentRoundTrip(req)
 	default:
 		return unknownRouteResp, nil
 	}
@@ -169,6 +252,52 @@ func (b *backend) checkAuthorization(req *http.Request, wantMethod string) (*htt
 
 	// No fault found, good to go
 	return nil, nil
+}
+
+func (b *backend) uploadAttachmentRoundTrip(req *http.Request) (*http.Response, error) {
+	if badAuthResp, err := b.checkAuthorization(req, "POST"); err != nil || badAuthResp != nil {
+		return badAuthResp, err
+	}
+
+	if err := req.ParseMultipartForm(10e9); err != nil {
+		return makeResp(err.Error(), http.StatusBadRequest, nil), nil
+	}
+
+	urlPath := strings.Trim(req.URL.Path, "/")
+	splits := strings.Split(urlPath, "/")
+	if len(splits) < 2 {
+		return makeResp("expecting the attachment id", http.StatusBadRequest, nil), nil
+	}
+
+	// Second last segment of the path
+	taskID := splits[len(splits)-2]
+	if taskID == "" {
+		return makeResp("expecting a taskID", http.StatusBadRequest, nil), nil
+	}
+
+	// Enforce that the name is sent
+	name := req.FormValue("name")
+	if name == "" {
+		return makeResp("\"name\" should have been set", http.StatusBadRequest, nil), nil
+	}
+
+	file, _, err := req.FormFile("file")
+	if err != nil {
+		return makeResp(err.Error(), http.StatusBadRequest, nil), nil
+	}
+	defer file.Close()
+
+	n, err := io.Copy(ioutil.Discard, file)
+	if err != nil {
+		return makeResp(err.Error(), http.StatusBadRequest, nil), nil
+	}
+
+	if n <= 10 {
+		return makeResp("uploaded less than 10 bytes", http.StatusBadRequest, nil), nil
+	}
+	attachmentID := attachmentID1
+	diskPath := attachmentResponsePath(attachmentID)
+	return makeRespFromFile(diskPath)
 }
 
 func (b *backend) findAttachmentByIDRoundTrip(req *http.Request) (*http.Response, error) {

@@ -15,13 +15,18 @@
 package asana
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"strings"
 
 	"github.com/orijtech/otils"
+
+	"github.com/odeke-em/go-uuid"
 )
 
 type Attachment struct {
@@ -76,4 +81,110 @@ func parseOutAttachmentFromData(blob []byte) (*Attachment, error) {
 	}
 
 	return nil, errNoAttachment
+}
+
+type AttachmentUpload struct {
+	Body   io.Reader `json:"-"`
+	TaskID string    `json:"task_id"`
+	Name   string    `json:"name"`
+}
+
+func (au *AttachmentUpload) nonBlankFilename() string {
+	if au.Name != "" {
+		return au.Name
+	}
+	return uuid.NewRandom().String()
+}
+
+var errNilBody = errors.New("expecting a non-nil body")
+
+func (au *AttachmentUpload) Validate() error {
+	if au == nil || au.Body == nil {
+		return errNilBody
+	}
+	if strings.TrimSpace(au.TaskID) == "" {
+		return errEmptyTaskID
+	}
+	return nil
+}
+
+// UploadAtatchment uploads an attachment to a specific task.
+// Its fields: TaskID and Body must be set otherwise it will return an error.
+func (c *Client) UploadAttachment(au *AttachmentUpload) (*Attachment, error) {
+	if err := au.Validate(); err != nil {
+		return nil, err
+	}
+
+	// Step 1. Try to determine the contentType.
+	contentType, body, err := fDetectContentType(au.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 2:
+	// Initiate and then make the upload.
+	prc, pwc := io.Pipe()
+	mpartW := multipart.NewWriter(pwc)
+	go func() {
+		defer func() {
+			_ = mpartW.Close()
+			_ = pwc.Close()
+		}()
+
+		formFile, err := mpartW.CreateFormFile("file", au.nonBlankFilename())
+		if err != nil {
+			return
+		}
+		_, _ = io.Copy(formFile, body)
+
+		writeStringField(mpartW, "Content-Type", contentType)
+		writeStringField(mpartW, "name", au.Name)
+	}()
+
+	fullURL := fmt.Sprintf("%s/tasks/%s/attachments", baseURL, au.TaskID)
+	req, err := http.NewRequest("POST", fullURL, prc)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", mpartW.FormDataContentType())
+	slurp, _, err := c.doAuthReqThenSlurpBody(req)
+	if err != nil {
+		return nil, err
+	}
+	return parseOutAttachmentFromData(slurp)
+}
+
+func writeStringField(w *multipart.Writer, key, value string) {
+	fw, err := w.CreateFormField(key)
+	if err == nil {
+		_, _ = io.WriteString(fw, value)
+	}
+}
+
+func fDetectContentType(r io.Reader) (string, io.Reader, error) {
+	if r == nil {
+		return "", nil, errNilBody
+	}
+
+	seeker, seekable := r.(io.Seeker)
+	sniffBuf := make([]byte, 512)
+	n, err := io.ReadAtLeast(r, sniffBuf, 1)
+	if err != nil {
+		return "", nil, err
+	}
+
+	contentType := http.DetectContentType(sniffBuf)
+	needsRepad := !seekable
+	if seekable {
+		if _, err = seeker.Seek(int64(-n), io.SeekCurrent); err != nil {
+			// Since we failed to rewind it, mark it as needing repad
+			needsRepad = true
+		}
+	}
+
+	if needsRepad {
+		r = io.MultiReader(bytes.NewReader(sniffBuf), r)
+	}
+
+	return contentType, r, nil
 }
