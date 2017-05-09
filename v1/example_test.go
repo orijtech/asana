@@ -423,3 +423,16 @@ func Example_client_ListAllUsersInTeam() {
 		pageCount += 1
 	}
 }
+
+func Example_client_FindAttachmentByID() {
+	client, err := asana.NewClient()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	foundAttachment, err := client.FindAttachmentByID("5678")
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Found attachment: %#v\n", foundAttachment)
+}

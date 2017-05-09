@@ -1,0 +1,12 @@
+{
+    "name": "Screenshot.png",
+    "parent": {
+      "id": 1337,
+      "name": "My Task"
+    },
+    "view_url": "https://www.dropbox.com/s/1234567890abcdef/Screenshot.png",
+    "created_at": "",
+    "download_url": "https://www.dropbox.com/s/1234567890abcdef/Screenshot.png?dl=1",
+    "host": "dropbox",
+    "id": 5678
+}

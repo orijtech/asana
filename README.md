@@ -62,3 +62,19 @@ func main() {
 	}
 }
 ```
+
+## Find an attachment by id
+```go
+func main() {
+	client, err := asana.NewClient()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	foundAttachment, err := client.FindAttachmentByID("5678")
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Printf("Found attachment: %#v\n", foundAttachment)
+}
+```
