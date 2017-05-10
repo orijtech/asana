@@ -109,3 +109,22 @@ func main() {
 	fmt.Printf("Response attachment: %#v\n", respAttachment)
 }
 ```
+
+## List all attachments for a task
+```go
+func main() {
+	client, err := asana.NewClient()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	attachmentsPage, err := client.ListAllAttachmentsForTask("331727965981099")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for i, task := range attachmentsPage.Attachments {
+		fmt.Printf("Task #%d: %#v\n\n", i, task)
+	}
+}
+```

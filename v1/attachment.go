@@ -154,6 +154,34 @@ func (c *Client) UploadAttachment(au *AttachmentUpload) (*Attachment, error) {
 	return parseOutAttachmentFromData(slurp)
 }
 
+type AttachmentsPage struct {
+	Attachments []*Attachment `json:"data"`
+}
+
+// ListAllAttachmentsForTask retrieves all the attachments for the taskID provided.
+func (c *Client) ListAllAttachmentsForTask(taskID string) (*AttachmentsPage, error) {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return nil, errEmptyTaskID
+	}
+	fullURL := fmt.Sprintf("%s/tasks/%s/attachments", baseURL, taskID)
+	req, err := http.NewRequest("GET", fullURL, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	slurp, _, err := c.doAuthReqThenSlurpBody(req)
+	if err != nil {
+		return nil, err
+	}
+
+	apage := new(AttachmentsPage)
+	if err := json.Unmarshal(slurp, apage); err != nil {
+		return nil, err
+	}
+	return apage, nil
+}
+
 func writeStringField(w *multipart.Writer, key, value string) {
 	fw, err := w.CreateFormField(key)
 	if err == nil {

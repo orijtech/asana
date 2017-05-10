@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -403,7 +402,6 @@ func (c *Client) doTasksPaging(path string) (resultsChan chan *TaskResultPage, c
 
 		for {
 			fullURL := fmt.Sprintf("%s%s", baseURL, path)
-			log.Printf("fullURL: %q", fullURL)
 			req, err := http.NewRequest("GET", fullURL, nil)
 			if err != nil {
 				tasksPageChan <- &TaskResultPage{Err: err}
@@ -411,7 +409,6 @@ func (c *Client) doTasksPaging(path string) (resultsChan chan *TaskResultPage, c
 			}
 
 			slurp, _, err := c.doAuthReqThenSlurpBody(req)
-log.Printf("slurp: %s\n", slurp)
 			if err != nil {
 				tasksPageChan <- &TaskResultPage{Err: err}
 				return

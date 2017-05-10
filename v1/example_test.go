@@ -460,3 +460,19 @@ func Example_client_UploadAttachment() {
 	}
 	fmt.Printf("Response attachment: %#v\n", respAttachment)
 }
+
+func Example_client_ListAllAttachmentsForTask() {
+	client, err := asana.NewClient()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	attachmentsPage, err := client.ListAllAttachmentsForTask("331727965981099")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	for i, task := range attachmentsPage.Attachments {
+		fmt.Printf("Task #%d: %#v\n\n", i, task)
+	}
+}

@@ -111,7 +111,6 @@ func (c *Client) RemoveUserFromTeam(treq *TeamRequest) error {
 	return err
 }
 
-
 type teamWrap struct {
 	Team *Team `json:"data"`
 }
