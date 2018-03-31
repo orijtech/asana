@@ -160,7 +160,7 @@ func (ymd *YYYYMMDD) String() string {
 }
 
 func intifyIt(st string) (int64, error) {
-	return strconv.ParseInt(st, 64, 10)
+	return strconv.ParseInt(st, 10, 64)
 }
 
 func (c *Client) doAuthReqThenSlurpBody(req *http.Request) ([]byte, http.Header, error) {
