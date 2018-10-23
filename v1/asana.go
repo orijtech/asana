@@ -83,10 +83,14 @@ func (c *Client) httpClient() *http.Client {
 }
 
 type User struct {
-	UID UserID `json:"user"`
+	UID UserID `json:"id"`
+	GID string `json:"gid"`
+	Name string `json:"name"`
+	Email string `json:"email"`
+	ResourceType string `json:"resource_type"`
 }
 
-type UserID string
+type UserID int64
 
 var _ json.Marshaler = (*UserID)(nil)
 
@@ -102,6 +106,71 @@ func (uid UserID) String() string {
 		return MeAsUser
 	}
 	return str
+}
+
+type userSlurp struct {
+	User  User `json:"data"`
+}
+
+func (c *Client) GetUser(id UserID) (*User, error) {
+	fullURL := fmt.Sprintf("%s/users/%d", baseURL, id)
+	req, err := http.NewRequest("GET", fullURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	slurp, _, err := c.doAuthReqThenSlurpBody(req)
+	if err != nil {
+		return nil, err
+	}
+	u := new(userSlurp)
+	if err := json.Unmarshal(slurp, u); err != nil {
+		return nil, err
+	}
+	return &u.User, nil
+}
+
+func (c *Client) ListAllUsersInOrganization(teamID string) (pagesChan chan *UsersPage, cancelChan chan<- bool, err error) {
+	if teamID == "" {
+		return nil, nil, errEmptyTeamID
+	}
+
+	cancelChan = make(chan bool, 1)
+	pagesChan = make(chan *UsersPage)
+
+	go func() {
+		defer close(pagesChan)
+
+		path := fmt.Sprintf("/users?opt_fields=id,email&workspace=%s", teamID)
+		for {
+			fullURL := fmt.Sprintf("%s%s", baseURL, path)
+			req, err := http.NewRequest("GET", fullURL, nil)
+			if err != nil {
+				pagesChan <- &UsersPage{Err: err}
+				return
+			}
+			slurp, _, err := c.doAuthReqThenSlurpBody(req)
+			if err != nil {
+				pagesChan <- &UsersPage{Err: err}
+				return
+			}
+
+			pager := new(usersPager)
+			if err := json.Unmarshal(slurp, pager); err != nil {
+				pager.Err = err
+			}
+			usersPage := pager.UsersPage
+			pagesChan <- &usersPage
+
+			if np := pager.NextPage; np != nil && np.Path == "" {
+				path = np.Path
+			} else {
+				// End of this pagination
+				break
+			}
+		}
+	}()
+
+	return pagesChan, cancelChan, nil
 }
 
 var errUnimplemented = errors.New("unimplemented")
