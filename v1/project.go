@@ -57,7 +57,8 @@ func (l *Layout) UnmarshalJSON(b []byte) error {
 }
 
 type ProjectRequest struct {
-	ProjectID string `json:"id"`
+	ProjectID  string `json:"id"`
+	ProjectGID string `json:"project_gid"`
 
 	Name  string `json:"name,omitempty"`
 	Notes string `json:"notes,omitempty"`
@@ -69,15 +70,18 @@ type ProjectRequest struct {
 
 	Workspace string `json:"workspace,omitempty"`
 
-	PublicToOrganization bool `json:"public,omitempty"`
+	PublicToOrganization bool     `json:"public,omitempty"`
+	Members              []string `json:"members,omitempty"`
 }
 
 type Project struct {
-	ID       int64  `json:"id,omitempty"`
-	Name     string `json:"name,omitempty"`
-	Notes    string `json:"notes,omitempty"`
-	Color    string `json:"color,omitempty"`
-	Archived bool   `json:"archived,omitempty"`
+	ID       int64              `json:"id,omitempty"`
+	GID      string             `json:"gid,omitempty"`
+	Team     *NamedAndIDdEntity `json:"team,omitempty"`
+	Name     string             `json:"name,omitempty"`
+	Notes    string             `json:"notes,omitempty"`
+	Color    string             `json:"color,omitempty"`
+	Archived bool               `json:"archived,omitempty"`
 
 	Owner      *NamedAndIDdEntity `json:"owner,omitempty"`
 	CreatedAt  *time.Time         `json:"created_at,omitempty"`
@@ -157,6 +161,48 @@ func (c *Client) UpdateProject(preq *ProjectRequest) (*Project, error) {
 	}
 	return parseOutProjectFromData(slurp)
 
+}
+
+func (c *Client) AddUsersToProject(preq *ProjectRequest) error {
+	if err := preq.Validate(); err != nil {
+		return err
+	}
+
+	qs, err := otils.ToURLValues(preq)
+	if err != nil {
+		return err
+	}
+
+	queryStr := qs.Encode()
+	fullURL := fmt.Sprintf("%s/projects/%s/addMembers", baseURL, preq.ProjectGID)
+	req, err := http.NewRequest("POST", fullURL, strings.NewReader(queryStr))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	_, _, err = c.doAuthReqThenSlurpBody(req)
+	return err
+}
+
+func (c *Client) RemoveUsersFromProject(preq *ProjectRequest) error {
+	if err := preq.Validate(); err != nil {
+		return err
+	}
+
+	qs, err := otils.ToURLValues(preq)
+	if err != nil {
+		return err
+	}
+
+	queryStr := qs.Encode()
+	fullURL := fmt.Sprintf("%s/projects/%s/removeMembers", baseURL, preq.ProjectGID)
+	req, err := http.NewRequest("POST", fullURL, strings.NewReader(queryStr))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	_, _, err = c.doAuthReqThenSlurpBody(req)
+	return err
 }
 
 func (c *Client) CreateProject(preq *ProjectRequest) (*Project, error) {
@@ -250,7 +296,7 @@ func (c *Client) QueryForProjects(pq *ProjectQuery) (pagesChan chan *ProjectsPag
 	go func() {
 		defer close(pagesChan)
 
-		path := fmt.Sprintf("/projects?%s", qs.Encode())
+		path := fmt.Sprintf("/projects?opt_fields=id,gid,name,notes,team,members&%s", qs.Encode())
 		for {
 			fullURL := fmt.Sprintf("%s%s", baseURL, path)
 			req, _ := http.NewRequest("GET", fullURL, nil)
