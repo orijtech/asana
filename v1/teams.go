@@ -18,7 +18,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"strings"
 
@@ -29,7 +28,11 @@ type teamCRUDData struct {
 	UserID UserID `json:"user"`
 }
 
-type Team NamedAndIDdEntity
+type Team struct {
+	Name string `json:"name"`
+	ID   int64  `json:"id"`
+	HtmlDescription string `json:"html_description"`
+}
 
 type TeamRequest struct {
 	// TeamID is a globally unique identifier for the team.
@@ -71,7 +74,7 @@ func (c *Client) AddUserToTeam(treq *TeamRequest) (*Team, error) {
 		return nil, err
 	}
 
-	fullURL := fmt.Sprintf("%s/teams/%s/addUser", baseURL, treq.TeamID)
+	fullURL := fmt.Sprintf("%s/teams/%s/addUser?user=%s", baseURL, treq.TeamID, treq.UserID)
 	req, err := http.NewRequest("POST", fullURL, strings.NewReader(qs.Encode()))
 	if err != nil {
 		return nil, err
@@ -100,7 +103,7 @@ func (c *Client) RemoveUserFromTeam(treq *TeamRequest) error {
 		return err
 	}
 
-	fullURL := fmt.Sprintf("%s/teams/%s/removeUser", baseURL, treq.TeamID)
+	fullURL := fmt.Sprintf("%s/teams/%s/removeUser?user=%s", baseURL, treq.TeamID, treq.UserID)
 	req, err := http.NewRequest("POST", fullURL, strings.NewReader(qs.Encode()))
 	if err != nil {
 		return err
@@ -150,7 +153,7 @@ func (c *Client) ListAllTeamsInOrganization(organizationID string) (pagesChan ch
 		return nil, nil, errEmptyOrganizationID
 	}
 
-	startingPath := fmt.Sprintf("/organizations/%s/teams", organizationID)
+	startingPath := fmt.Sprintf("/organizations/%s/teams?opt_fields=html_description,name,id", organizationID)
 	return c.pageForTeams(startingPath)
 }
 
@@ -182,7 +185,6 @@ func (c *Client) pageForTeams(path string) (pagesChan chan *TeamPage, cancelChan
 
 		for {
 			fullURL := fmt.Sprintf("%s%s", baseURL, path)
-			log.Printf("fullURL: %q\n", fullURL)
 			req, _ := http.NewRequest("GET", fullURL, nil)
 			slurp, _, err := c.doAuthReqThenSlurpBody(req)
 			if err != nil {
@@ -250,7 +252,6 @@ func (c *Client) ListAllUsersInTeam(teamID string) (pagesChan chan *UsersPage, c
 			if err := json.Unmarshal(slurp, pager); err != nil {
 				pager.Err = err
 			}
-
 			usersPage := pager.UsersPage
 			pagesChan <- &usersPage
 
